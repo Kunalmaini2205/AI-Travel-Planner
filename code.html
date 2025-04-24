@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Travel Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+  <!-- HTML2PDF for export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    #map {
+      height: 400px;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body class="bg-gradient-to-tr from-blue-100 via-white to-pink-100 min-h-screen font-sans p-6">
+  <div class="max-w-3xl mx-auto bg-white shadow-xl rounded-xl p-8 transition duration-300 hover:shadow-2xl" id="plannerSection">
+    <h1 class="text-3xl font-bold text-center text-blue-600 mb-6">🌍 AI Travel Planner</h1>
+
+    <label class="font-medium">Enter City or Multiple Cities (comma-separated):</label>
+    <input type="text" id="cities" class="border rounded-md w-full px-4 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 transition" placeholder="e.g., Paris, Rome, Berlin">
+
+    <label class="font-medium mt-4 block">Travel Date:</label>
+    <input type="date" id="date" class="border rounded-md w-full px-4 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
+
+    <label class="font-medium mt-4 block">Trip Preference:</label>
+    <select id="preference" class="border rounded-md w-full px-4 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
+      <option value="adventure">Adventure</option>
+      <option value="relax">Relax</option>
+      <option value="cultural">Cultural</option>
+    </select>
+
+    <div class="mt-6 flex flex-col sm:flex-row gap-4">
+      <button onclick="planTrip()" class="bg-blue-500 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded transition-all duration-300 w-full sm:w-1/2">Plan Trip</button>
+      <button onclick="downloadPDF()" class="bg-green-500 hover:bg-green-700 text-white font-semibold px-6 py-2 rounded transition-all duration-300 w-full sm:w-1/2">Download PDF</button>
+    </div>
+
+    <div id="itineraryOutput" class="mt-6 p-4 bg-blue-50 rounded-md shadow-sm"></div>
+    <div id="hotelsOutput" class="mt-4 p-4 bg-pink-50 rounded-md shadow-sm"></div>
+    <div id="map" class="mt-6"></div>
+  </div>
+
+  <script>
+    const geoapifyKey = "6dfb77ca200f476e8893fe100f807847"; // Replace with your API key
+    let map;
+
+    const tripSuggestions = {
+      adventure: [
+        "🧗 Hike in nearby hills or mountains",
+        "🚵 Go mountain biking on nature trails",
+        "🛶 Try white water rafting or kayaking",
+        "🪂 Experience paragliding or ziplining",
+        "🌲 Join a jungle or wildlife safari"
+      ],
+      relax: [
+        "💆 Visit a spa or wellness retreat",
+        "🏖️ Lounge by the beach or lake",
+        "🌸 Relax in a botanical garden or park",
+        "📖 Unwind in a cozy café or library",
+        "🛏️ Take a scenic countryside retreat"
+      ],
+      cultural: [
+        "🏛️ Visit historical landmarks and monuments",
+        "🎭 Attend a traditional performance or play",
+        "🖼️ Explore art galleries and museums",
+        "🥘 Try authentic local cuisines and markets",
+        "🏙️ Take a guided heritage walking tour"
+      ]
+    };
+
+    async function planTrip() {
+      const citiesInput = document.getElementById("cities").value;
+      const date = document.getElementById("date").value;
+      const preference = document.getElementById("preference").value;
+      const itineraryOutput = document.getElementById("itineraryOutput");
+      const hotelsOutput = document.getElementById("hotelsOutput");
+
+      if (!citiesInput || !date) {
+        itineraryOutput.innerHTML = "⚠️ Please enter destination(s) and date.";
+        return;
+      }
+
+      const cities = citiesInput.split(",").map(c => c.trim());
+      const activities = tripSuggestions[preference];
+
+      let html = `<h3 class="text-lg font-semibold">🧳 Your Trip Itinerary</h3>`;
+      html += `<p><strong>Trip Type:</strong> ${preference}<br><strong>Date:</strong> ${date}</p><br>`;
+
+      hotelsOutput.innerHTML = ""; // Clear previous hotel data
+
+      for (let i = 0; i < cities.length; i++) {
+        const city = cities[i];
+        html += `<div class="mb-2"><strong>📍 Stop ${i + 1}: ${city}</strong><ul class="list-disc list-inside text-gray-700">`;
+        activities.forEach(activity => {
+          html += `<li>${activity}</li>`;
+        });
+        html += `</ul></div>`;
+        await loadHotels(city);
+      }
+
+      itineraryOutput.innerHTML = html;
+      loadMap(cities[0]);
+    }
+
+    function loadMap(city) {
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.length > 0) {
+            const lat = parseFloat(data[0].lat);
+            const lon = parseFloat(data[0].lon);
+
+            if (!map) {
+              map = L.map('map').setView([lat, lon], 12);
+              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+              }).addTo(map);
+            } else {
+              map.setView([lat, lon], 12);
+            }
+
+            L.marker([lat, lon]).addTo(map).bindPopup(city).openPopup();
+          }
+        });
+    }
+
+    async function loadHotels(city) {
+      const hotelsDiv = document.getElementById("hotelsOutput");
+      let resultHTML = `<h4 class="text-lg font-semibold">🏨 Hotels in ${city}</h4>`;
+
+      try {
+        const locRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
+        const locData = await locRes.json();
+        if (!locData[0]) return;
+        const lat = locData[0].lat;
+        const lon = locData[0].lon;
+
+        const hotelURL = `https://api.geoapify.com/v2/places?categories=accommodation.hotel&filter=circle:${lon},${lat},3000&limit=5&apiKey=${geoapifyKey}`;
+        const hotelRes = await fetch(hotelURL);
+        const hotelData = await hotelRes.json();
+
+        hotelData.features.forEach(hotel => {
+          const name = hotel.properties.name || "Unnamed Hotel";
+          const address = hotel.properties.address_line1 || "No address listed";
+          const image = "https://source.unsplash.com/featured/?hotel";
+          resultHTML += `
+            <div class="hotel border-b py-4">
+              <strong>${name}</strong><br>
+              ${address}<br>
+            </div>
+          `;
+        });
+      } catch (e) {
+        resultHTML += `<p>⚠️ Unable to load hotel data for ${city}.</p>`;
+      }
+
+      hotelsDiv.innerHTML += resultHTML;
+    }
+
+    function downloadPDF() {
+      const element = document.getElementById("plannerSection");
+      html2pdf().from(element).save("Travel_Itinerary.pdf");
+    }
+  </script>
+</body>
+</html>
